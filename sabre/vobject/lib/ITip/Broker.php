@@ -755,12 +755,22 @@ class Broker
                 // generated for an instance of a recurring event, through the
                 // fact that the instance has disappeared by showing up in
                 // EXDATE
-                $dt = DateTimeParser::parse($instance['id'], $eventInfo['timezone']);
-                // Treat is as a DATE field
-                if (strlen($instance['id']) <= 8) {
-                    $event->add('DTSTART', $dt, ['VALUE' => 'DATE']);
+                if ('master' !== $instance['id']) {
+                    $dt = DateTimeParser::parse($instance['id'], $eventInfo['timezone']);
+                    // Treat is as a DATE field
+                    if (strlen($instance['id']) <= 8) {
+                        $event->add('DTSTART', $dt, ['VALUE' => 'DATE']);
+                    } else {
+                        $event->add('DTSTART', $dt);
+                    }
                 } else {
-                    $event->add('DTSTART', $dt);
+                    $instanceObj = $calendar->VEVENT;
+                    $event->add(clone $instanceObj->DTSTART);
+                    if (isset($instanceObj->DTEND)) {
+                        $event->add(clone $instanceObj->DTEND);
+                    } elseif (isset($instanceObj->DURATION)) {
+                        $event->add(clone $instanceObj->DURATION);
+                    }
                 }
                 if ($summary) {
                     $event->add('SUMMARY', $summary);

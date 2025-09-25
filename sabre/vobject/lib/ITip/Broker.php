@@ -870,9 +870,10 @@ class Broker
             }
 
             if (isset($vevent->ORGANIZER)) {
-                if (is_null($organizer)) {
+                if (true || is_null($organizer)) {
                     $organizer = $vevent->ORGANIZER->getNormalizedValue();
                     $organizerName = isset($vevent->ORGANIZER['CN']) ? $vevent->ORGANIZER['CN'] : null;
+                    trigger_error('ORGANIZER IS ' . $organizer);
                 } else {
                     if (strtoupper($organizer) !== strtoupper($vevent->ORGANIZER->getNormalizedValue())) {
                         throw new SameOrganizerForAllComponentsException('Every instance of the event must have the same organizer.');

@@ -370,7 +370,11 @@ function parseMimeType(string $str): array
  */
 function encodePath(string $path): string
 {
-    return preg_replace_callback('/([^A-Za-z0-9_\-\.~\(\)\/:@])/', function ($match) {
+    $allowedChars = 'A-Za-z0-9_\-\.~\(\)\/:@';
+    if (str_starts_with($path, 'mailto:')) {
+        $allowedChars .= '+'; // allow frequently used + sign
+    }
+    return preg_replace_callback('/([^' . $allowedChars . '])/', function ($match) {
         return '%'.sprintf('%02x', ord($match[0]));
     }, $path);
 }

@@ -11,9 +11,6 @@
 
 namespace Symfony\Component\EventDispatcher;
 
-use Throwable;
-use Exception;
-
 use Psr\EventDispatcher\StoppableEventInterface;
 use Symfony\Component\EventDispatcher\Debug\WrappedListener;
 
@@ -206,17 +203,7 @@ class EventDispatcher implements EventDispatcherInterface
             if ($stoppable && $event->isPropagationStopped()) {
                 break;
             }
-            try {
-                $listener($event, $eventName, $this);
-            } catch (Throwable $t) {
-                // it is just not acceptable in such a heterogeneous infra
-                // structure like NC that one badly designed listener stops all
-                // others.
-                \OCP\Server::get(\Psr\Log\LoggerInterface::class)->error(
-                    'Exception during event dispatch',
-                    [ 'exception' => new \Exception('Exception during event dispatch', 0, $t) ],
-                );
-            }
+            $listener($event, $eventName, $this);
         }
     }
 

@@ -7,9 +7,13 @@
 		"sabre/dav": {
 			"Check for instanceof INode instead of Node": ".patches/check-for-instanceof-INode-instead-of-Node-1595.patch"
 		},
+		"sabre/http": {
+			"Preserve plus signs in mailto paths": ".patches/sabre-http-mailto-encoding.patch"
+		},
 		"sabre/vobject": {
 			"fix use RDATE in time range check and use all instances": ".patches/sabre-vobject-rdate.patch",
-			"fix send participation reply on fresh event": ".patches/sabre-vobject-iTipBroker-replies.patch"
+			"fix send participation reply on fresh event": ".patches/sabre-vobject-iTipBroker-replies.patch",
+			"Preserve local calendar recurrence and scheduling changes": ".patches/sabre-vobject-local-changes.patch"
 		},
 		"sabre/xml": {
 			"Remove callable serialization": ".patches/sabre-xml-remove-callable-serialization.patch"

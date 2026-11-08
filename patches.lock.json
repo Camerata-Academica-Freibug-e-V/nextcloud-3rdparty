@@ -1,5 +1,5 @@
 {
-    "_hash": "b827683badf38ee383e2b0f62c03aedfa5f367a811b2ad426de87332e0910b2f",
+    "_hash": "7803807ae5f3fd1fbebf9a774ab66456a8587862918979fa781637c434709b5f",
     "patches": {
         "wapmorgan/mp3info": [
             {
@@ -35,6 +35,18 @@
                 }
             }
         ],
+        "sabre/http": [
+            {
+                "package": "sabre/http",
+                "description": "Preserve plus signs in mailto paths",
+                "url": ".patches/sabre-http-mailto-encoding.patch",
+                "sha256": "c22808abb993da7abe74a2c83739210b4dc239b1d0f629c09f2644488157e3e4",
+                "depth": 1,
+                "extra": {
+                    "provenance": "patches-file:composer.patches.json"
+                }
+            }
+        ],
         "sabre/vobject": [
             {
                 "package": "sabre/vobject",
@@ -51,6 +63,16 @@
                 "description": "fix send participation reply on fresh event",
                 "url": ".patches/sabre-vobject-iTipBroker-replies.patch",
                 "sha256": "fb764740364f485079058d9a653094c3f9f36e04d01f0f3f5b52bd7b66a9cb2b",
+                "depth": 1,
+                "extra": {
+                    "provenance": "patches-file:composer.patches.json"
+                }
+            },
+            {
+                "package": "sabre/vobject",
+                "description": "Preserve local calendar recurrence and scheduling changes",
+                "url": ".patches/sabre-vobject-local-changes.patch",
+                "sha256": "95fe2f9f0ea6ec4c0e89ff66f96e5249e5783891397f600194463fcf99d069d3",
                 "depth": 1,
                 "extra": {
                     "provenance": "patches-file:composer.patches.json"

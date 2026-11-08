@@ -1,0 +1,300 @@
+--- a/lib/ITip/Broker.php
++++ b/lib/ITip/Broker.php
+@@ -755,12 +755,22 @@
+                 // generated for an instance of a recurring event, through the
+                 // fact that the instance has disappeared by showing up in
+                 // EXDATE
+-                $dt = DateTimeParser::parse($instance['id'], $eventInfo['timezone']);
+-                // Treat is as a DATE field
+-                if (strlen($instance['id']) <= 8) {
+-                    $event->add('DTSTART', $dt, ['VALUE' => 'DATE']);
++                if ('master' !== $instance['id']) {
++                    $dt = DateTimeParser::parse($instance['id'], $eventInfo['timezone']);
++                    // Treat is as a DATE field
++                    if (strlen($instance['id']) <= 8) {
++                        $event->add('DTSTART', $dt, ['VALUE' => 'DATE']);
++                    } else {
++                        $event->add('DTSTART', $dt);
++                    }
+                 } else {
+-                    $event->add('DTSTART', $dt);
++                    $instanceObj = $calendar->VEVENT;
++                    $event->add(clone $instanceObj->DTSTART);
++                    if (isset($instanceObj->DTEND)) {
++                        $event->add(clone $instanceObj->DTEND);
++                    } elseif (isset($instanceObj->DURATION)) {
++                        $event->add(clone $instanceObj->DURATION);
++                    }
+                 }
+                 if ($summary) {
+                     $event->add('SUMMARY', $summary);
+@@ -860,9 +870,10 @@
+             }
+ 
+             if (isset($vevent->ORGANIZER)) {
+-                if (is_null($organizer)) {
++                if (true || is_null($organizer)) {
+                     $organizer = $vevent->ORGANIZER->getNormalizedValue();
+                     $organizerName = isset($vevent->ORGANIZER['CN']) ? $vevent->ORGANIZER['CN'] : null;
++                    trigger_error('ORGANIZER IS ' . $organizer);
+                 } else {
+                     if (strtoupper($organizer) !== strtoupper($vevent->ORGANIZER->getNormalizedValue())) {
+                         throw new SameOrganizerForAllComponentsException('Every instance of the event must have the same organizer.');
+--- a/lib/Recur/EventIterator.php
++++ b/lib/Recur/EventIterator.php
+@@ -2,6 +2,7 @@
+ 
+ namespace Sabre\VObject\Recur;
+ 
++use AppendIterator;
+ use DateTimeImmutable;
+ use DateTimeInterface;
+ use DateTimeZone;
+@@ -167,22 +168,27 @@
+             $this->eventDuration = 0;
+         }
+ 
++        $this->recurIterators = [];
++        if (isset($this->masterEvent->RRULE)) {
++            foreach ($this->masterEvent->RRULE as $rRule) {
++                $this->recurIterators[] = new RRuleIterator(
++                    $this->masterEvent->RRULE->getParts(),
++                    $this->startDate
++                );
++            }
++        }
+         if (isset($this->masterEvent->RDATE)) {
+             $rdateValues = [];
+             foreach ($this->masterEvent->RDATE as $rdate) {
+                 $rdateValues = array_merge($rdateValues, $rdate->getParts());
+             }
+-            $this->recurIterator = new RDateIterator(
++            $this->recurIterators[] = new RDateIterator(
+                 $rdateValues,
+-                $this->startDate
++                $this->startDate,
+             );
+-        } elseif (isset($this->masterEvent->RRULE)) {
+-            $this->recurIterator = new RRuleIterator(
+-                $this->masterEvent->RRULE->getParts(),
+-                $this->startDate
+-            );
+-        } else {
+-            $this->recurIterator = new RRuleIterator(
++        }
++        if (empty($this->recurIterators)) {
++            $this->recurIterators[] = new RRuleIterator(
+                 [
+                     'FREQ' => 'DAILY',
+                     'COUNT' => 1,
+@@ -321,7 +327,9 @@
+     #[\ReturnTypeWillChange]
+     public function rewind()
+     {
+-        $this->recurIterator->rewind();
++        foreach ($this->recurIterators as $iterator) {
++            $iterator->rewind();
++        }
+         // re-creating overridden event index.
+         $index = [];
+         foreach ($this->overriddenEvents as $key => $event) {
+@@ -335,6 +343,15 @@
+ 
+         $this->nextDate = null;
+         $this->currentDate = clone $this->startDate;
++
++        $this->currentCandidates = [];
++        foreach ($this->recurIterators as $index => $iterator) {
++            if (!$iterator->valid()) {
++                continue;
++            }
++            $this->currentCandidates[$index] = $iterator->current()->getTimeStamp();
++        }
++        asort($this->currentCandidates);
+ 
+         $this->next();
+     }
+@@ -358,13 +375,30 @@
+             // We need to do this until we find a date that's not in the
+             // exception list.
+             do {
+-                if (!$this->recurIterator->valid()) {
++                if (empty($this->currentCandidates)) {
+                     $nextDate = null;
+                     break;
+                 }
+-                $nextDate = $this->recurIterator->current();
+-                $this->recurIterator->next();
+-            } while (isset($this->exceptions[$nextDate->getTimeStamp()]));
++                $nextIndex = array_key_first($this->currentCandidates);
++                $nextDate = $this->recurIterators[$nextIndex]->current();
++                $nextStamp = $this->currentCandidates[$nextIndex];
++
++                // advance all iterators which match the current timestamp
++                foreach ($this->currentCandidates as $index => $stamp) {
++                    if ($stamp > $nextStamp) {
++                        break;
++                    }
++                    $iterator = $this->recurIterators[$index];
++                    $iterator->next();
++                    if ($iterator->valid()) {
++                        $this->currentCandidates[$index] = $iterator->current()->getTimeStamp();
++                        asort($this->currentCandidates);
++                    } else {
++                        unset($this->currentCandidates[$index]);
++                        // resort not neccessary
++                    }
++                }
++            } while (isset($this->exceptions[$nextStamp]));
+         }
+ 
+         // $nextDate now contains what rrule thinks is the next one, but an
+@@ -412,15 +446,27 @@
+      */
+     public function isInfinite()
+     {
+-        return $this->recurIterator->isInfinite();
+-    }
+-
+-    /**
+-     * RRULE parser.
+-     *
+-     * @var RRuleIterator
+-     */
+-    protected $recurIterator;
++        foreach ($this->recurIterators as $iterator) {
++            if ($iterator->isInfinite()) {
++                return true;
++            }
++        }
++        return false;
++    }
++
++    /**
++     * Array of RRULE parsers.
++     *
++     * @var array<int, RRuleIterator>
++     */
++    protected $recurIterators;
++
++    /**
++     * Array of current candidate timestamps.
++     *
++     * @var array<int, int>
++     */
++    protected $currentCandidates;
+ 
+     /**
+      * The duration, in seconds, of the master event.
+--- a/lib/Recur/RDateIterator.php
++++ b/lib/Recur/RDateIterator.php
+@@ -2,6 +2,7 @@
+ 
+ namespace Sabre\VObject\Recur;
+ 
++use DateTimeImmutable;
+ use DateTimeInterface;
+ use Iterator;
+ use Sabre\VObject\DateTimeParser;
+@@ -30,7 +31,10 @@
+     {
+         $this->startDate = $start;
+         $this->parseRDate($rrule);
+-        $this->currentDate = clone $this->startDate;
++        array_unshift($this->dates, DateTimeImmutable::createFromInterface($this->startDate));
++        sort($this->dates);
++        $this->dates = array_values($this->dates);
++        $this->rewind();
+     }
+ 
+     /* Implementation of the Iterator interface {{{ */
+@@ -39,10 +43,16 @@
+     public function current()
+     {
+         if (!$this->valid()) {
+-            return;
++            return null;
+         }
+-
+-        return clone $this->currentDate;
++        if (is_string($this->dates[$this->counter])) {
++            $this->dates[$this->counter] =
++                DateTimeParser::parse(
++                    $this->dates[$this->counter],
++                    $this->startDate->getTimezone()
++                );
++        }
++        return $this->dates[$this->counter];
+     }
+ 
+     /**
+@@ -65,7 +75,7 @@
+     #[\ReturnTypeWillChange]
+     public function valid()
+     {
+-        return $this->counter <= count($this->dates);
++        return $this->counter < count($this->dates);
+     }
+ 
+     /**
+@@ -76,7 +86,6 @@
+     #[\ReturnTypeWillChange]
+     public function rewind()
+     {
+-        $this->currentDate = clone $this->startDate;
+         $this->counter = 0;
+     }
+ 
+@@ -92,12 +101,6 @@
+         if (!$this->valid()) {
+             return;
+         }
+-
+-        $this->currentDate =
+-            DateTimeParser::parse(
+-                $this->dates[$this->counter - 1],
+-                $this->startDate->getTimezone()
+-            );
+     }
+ 
+     /* End of Iterator implementation }}} */
+@@ -118,7 +121,7 @@
+      */
+     public function fastForward(DateTimeInterface $dt)
+     {
+-        while ($this->valid() && $this->currentDate < $dt) {
++        while ($this->valid() && $this->current() < $dt) {
+             $this->next();
+         }
+     }
+@@ -131,14 +134,6 @@
+      * @var DateTimeInterface
+      */
+     protected $startDate;
+-
+-    /**
+-     * The date of the current iteration. You can get this by calling
+-     * ->current().
+-     *
+-     * @var DateTimeInterface
+-     */
+-    protected $currentDate;
+ 
+     /**
+      * The current item in the list.
+@@ -162,8 +157,13 @@
+         if (is_string($rdate)) {
+             $rdate = explode(',', $rdate);
+         }
+-
+-        $this->dates = $rdate;
++        $this->dates = array_map(
++            fn(string $dateString) => DateTimeParser::parse(
++                $dateString,
++                $this->startDate->getTimezone()
++            ),
++            $rdate
++        );
+     }
+ 
+     /**
